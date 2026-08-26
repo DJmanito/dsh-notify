@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 安全区:MainActivity 对 webContainer 施加 systemBars insets padding(状态栏/导航栏/品牌 bar) -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/webContainer"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/white">
+
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 悬浮球:贴边半圆,点击完整显示并直接打开设置页;可拖动 -->
+    <com.dsh.notify.ui.FloatingBallView
+        android:id="@+id/floatingBall"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="top|start" />
+</FrameLayout>

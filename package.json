@@ -1,0 +1,51 @@
+{
+  "name": "@djmanito/dsh-notify",
+  "version": "1.0.0",
+  "description": "DSH 插件:浏览器推送通知(系统通知 ⏳/✅/❌)+ 设置页「通知设置」分区;为 DSH Remote · Notify(安卓 App)提供 /notify-state 通知事件源。",
+  "author": "DJmanito",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "client/client.js",
+    "client/build.mjs",
+    "client/index.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build:client": "node client/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.9"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "notification",
+    "remote",
+    "android"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      安全区:Android 15+(targetSdk 35) 强制 edge-to-edge,系统栏透明。
+      窗口背景设为白色(状态栏/导航栏条带透出),图标走"浅色背景深色图标"(light status/nav bar)。
+      实际 padding 由 MainActivity 的 systemBars insets 监听施加,确保品牌 bar 也覆盖。
+    -->
+    <style name="Theme.DshRemote" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:statusBarColor">@android:color/white</item>
+        <item name="android:navigationBarColor">@android:color/white</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>
