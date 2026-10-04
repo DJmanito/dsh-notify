@@ -170,9 +170,15 @@ console.log('buildToastScripts(WinRT spawn 双脚本 + broker 回退)')
       assert.ok(line.includes(expected), '转义后的标题未嵌入: ' + line.slice(0, 120))
     }
   })
-  t('自定义 aumid 生效', () => {
-    const { gcRaw } = buildToastScripts('T', 'B', 'X.Custom')
-    assert.ok(gcRaw.includes("CreateToastNotifier('X.Custom')"))
+  t('默认候选列表:首选 DSH 通知,回落 DshNotify', () => {
+    const { gcRaw } = buildToastScripts('T', 'B')
+    assert.ok(gcRaw.includes('@(\'DSH 通知\', \'DshNotify\')'), '候选列表未嵌入: ' + (gcRaw.match(/foreach \(\$a in @[^\)]*\)/)?.[0]))
+  })
+  t('自定义 aumid(单值/列表)生效', () => {
+    const single = buildToastScripts('T', 'B', 'X.Custom')
+    assert.ok(single.gcRaw.includes('@(\'X.Custom\')'))
+    const multi = buildToastScripts('T', 'B', ['A.One', 'B.Two'])
+    assert.ok(multi.gcRaw.includes('@(\'A.One\', \'B.Two\')'))
   })
 }
 

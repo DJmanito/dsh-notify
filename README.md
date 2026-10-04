@@ -15,7 +15,7 @@
   - ⏳ DSH 会话等待审批 / ⏳ DSH 会话等待回答
   - ✅ 审批已通过 / ❌ 审批未通过 / ✅ 已收到回答
   - ✅ DSH 会话已完成
-- **Windows 桌面端额外走 WinRT 直发通道**：插件后端在事件边沿直接调用 Windows 通知中心（`ToastNotificationManager`，AUMID `DJmanito.DshNotify`）——弥补 DSH 桌面壳 Electron 未设 `AppUserModelID` 导致渲染器 Notification 静默失效的问题（浏览器环境不受此影响，两端通道并存、互不干扰）。**该通道同样受「通知设置」管辖**（总开关 / 审批 / 任务完成三态）：注入脚本在设置变化时上报后端，后端只认桌面壳（Electron UA）的上报——WinRT 是宿主机本地通知，由本机桌面窗口的设置管理。
+- **Windows 桌面端额外走 WinRT 直发通道**：插件后端在事件边沿直接调用 Windows 通知中心（`ToastNotificationManager`）——弥补 DSH 桌面壳 Electron 未设 `AppUserModelID` 导致渲染器 Notification 静默失效的问题（浏览器环境不受此影响，两端通道并存、互不干扰）。**发送者名**：非打包应用的通知中心直接显示 AUMID 本身（无法单独设显示名），故用候选列表——首选 `DSH 通知`，WinRT 拒绝时自动回落 `DshNotify`。**该通道同样受「通知设置」管辖**（总开关 / 审批 / 任务完成三态）：注入脚本在设置变化时上报后端，后端只认桌面壳（Electron UA）的上报——WinRT 是宿主机本地通知，由本机桌面窗口的设置管理。
   - **AUMID 污染自愈**：若宿主应用（或其进程树）设置了"包标识"形态的 AppUserModelID，子进程会继承它，WinRT 将以 `0x80073D54（进程没有程序包标识符）`拒绝发通知。插件自动检测该错误码，改经 **WMI `Win32_Process.Create`**（进程由 WMI 服务创建、token 无继承标识）重发——两级尝试全程无感；任何一级失败仅记录到 `/notify-debug` 的 `lastToastError`，绝不影响 DSH 主流程
 - **完成语义**：主代理结束**且其全部子代理也结束**才发"会话已完成"（主代理结束但子代理仍在跑 → 不通知）；子代理的审批/问答照常通知
 - 每类三态：**一直通知**（每次触发弹新通知+响铃）/ **静默通知**（仅首次弹+响，之后更新已有通知）/ **关闭通知**
