@@ -1,7 +1,7 @@
 // dsh-notify 运行集合判定逻辑单测(纯 node,无依赖)
 // 场景覆盖:主代理/子代理/多级子代理/fork 会话 的完成边沿语义
 import assert from 'node:assert/strict'
-import { isSubagentHeader, topRootOf, computeRunningSet, readEvents, buildToastXml, escapeXml, classifyPageUa, buildToastScripts } from '../lib/index.js'
+import { isSubagentHeader, topRootOf, computeRunningSet, readEvents, buildToastXml, escapeXml, classifyPageUa, buildToastScripts, resolveSessionTitle, shortSid } from '../lib/index.js'
 
 const H = (id, extra) => ({ id, ...extra })
 const map = (list) => new Map(list.map((h) => [h.id, h]))
@@ -173,6 +173,48 @@ console.log('buildToastScripts(WinRT spawn 双脚本 + broker 回退)')
   t('自定义 aumid 生效', () => {
     const { gcRaw } = buildToastScripts('T', 'B', 'X.Custom')
     assert.ok(gcRaw.includes("CreateToastNotifier('X.Custom')"))
+  })
+}
+
+console.log('resolveSessionTitle(标题多源回落:同步→缓存→顶层)')
+{
+  const hdr = map([
+    H('main'),
+    H('sub1', { origin: 'subagent', delegationDepth: 1, parentSession: 'main' }),
+  ])
+  t('会话对象自带 title(同步源,零竞态)', () => {
+    const s = new Map([['main', { id: 'main', title: '  我的任务  ' }]])
+    assert.equal(resolveSessionTitle('main', s, new Map(), hdr), '我的任务')
+  })
+  t('header.title 也认', () => {
+    const s = new Map([['main', { id: 'main', header: { title: '头部标题' } }]])
+    assert.equal(resolveSessionTitle('main', s, new Map(), hdr), '头部标题')
+  })
+  t('对象无 title → 回落 titleCache(异步读结果)', () => {
+    const s = new Map([['main', { id: 'main' }]])
+    const cache = new Map([['main', '缓存标题']])
+    assert.equal(resolveSessionTitle('main', s, cache, hdr), '缓存标题')
+  })
+  t('子会话无自身标题 → 取顶层会话标题(子代理归属)', () => {
+    const s = new Map([
+      ['main', { id: 'main', title: '主会话标题' }],
+      ['sub1', { id: 'sub1', header: { origin: 'subagent', delegationDepth: 1, parentSession: 'main' } }],
+    ])
+    assert.equal(resolveSessionTitle('sub1', s, new Map(), hdr), '主会话标题')
+  })
+  t('子会话自身有标题 → 优先自身', () => {
+    const s = new Map([
+      ['main', { id: 'main', title: '主会话标题' }],
+      ['sub1', { id: 'sub1', title: '子会话标题', header: { origin: 'subagent', delegationDepth: 1, parentSession: 'main' } }],
+    ])
+    assert.equal(resolveSessionTitle('sub1', s, new Map(), hdr), '子会话标题')
+  })
+  t('三源皆空 → 空串(由调用方决定回落)', () => {
+    assert.equal(resolveSessionTitle('ghost', new Map(), new Map(), hdr), '')
+  })
+  t('shortSid:去 session- 前缀取前 8 位', () => {
+    assert.equal(shortSid('session-2514b418-382c-4896-abcdef'), '会话 2514b418')
+    assert.equal(shortSid('no-prefix-1234567890'), '会话 no-prefi')
   })
 }
 
