@@ -70,7 +70,9 @@ dsh plugin --profile desktop remove @djmanito/dsh-notify
 
 ### 安装 App
 
-GitHub Releases 下载 `DSH.Remote.Notify.apk` 安装；源码在 `android/` 目录可自行构建。
+GitHub Releases 下载 `DSH.Remote.Notify-v1.0.0.apk` 安装；源码在 `android/` 目录可自行构建。
+
+**手机连接 DSH**：新版 DSH 桌面环境默认监听 `0.0.0.0`，手机与宿主机在同一局域网即可直连（App 连接设置里填宿主机局域网 IP + 端口），无需额外桥接；也可用 `dsh-pocket` 新开一个手机专用固定端口（实测 `3081` 可用）。
 
 ## ⚠️ 安全说明（重要）
 
