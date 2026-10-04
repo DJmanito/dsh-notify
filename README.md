@@ -2,20 +2,23 @@
 
 以**通知**为主题的 DSH（DeepSeek Harness）配套项目：
 
-- **PC 端**：提供浏览器通知推送插件（npm 包 `@djmanito/dsh-notify`，本仓库根即该包），在关键节点上提供**审批、问答、会话完成**的触发推送通知——浏览器切至后台也能第一时间知道有待审批、待问答以及会话完成状态；
+- **PC 端**：提供通知推送插件（npm 包 `@djmanito/dsh-notify`，本仓库根即该包），在关键节点上提供**审批、问答、会话完成**的触发推送通知——浏览器切至后台、DSH 桌面端在后台运行时，也能第一时间知道有待审批、待问答以及会话完成状态；
 - **安卓端**：提供 Android App（`android/` 目录），手机连接到 DSH 的情况下也能接收同样的推送信息（**后台/锁屏可收**），主界面为 DSH 浏览器形态，可随时继续操作任务。
+
+**环境兼容**：DSH 桌面端（最新 Electron 壳）、浏览器访问（最新/旧版 DSH Web 入口）三端全支持；手机 App 独立轮询，不受影响。
 
 ## 功能
 
-### PC 端（@djmanito/dsh-notify 插件：浏览器通知推送）
+### PC 端（@djmanito/dsh-notify 插件：桌面端 + 浏览器通知推送）
 
-- 浏览器系统通知（Windows/macOS）：
+- 系统通知（Windows/macOS；DSH 桌面端与浏览器均生效，桌面端免授权弹窗）：
   - ⏳ DSH 会话等待审批 / ⏳ DSH 会话等待回答
   - ✅ 审批已通过 / ❌ 审批未通过 / ✅ 已收到回答
   - ✅ DSH 会话已完成
+- **完成语义**：主代理结束**且其全部子代理也结束**才发"会话已完成"（主代理结束但子代理仍在跑 → 不通知）；子代理的审批/问答照常通知
 - 每类三态：**一直通知**（每次触发弹新通知+响铃）/ **静默通知**（仅首次弹+响，之后更新已有通知）/ **关闭通知**
 - **完成审批自动撤回**：审批/问答通过后，自动撤掉之前的"等待"通知（可开关）
-- DSH 设置页「**通知设置**」分区：总开关 / 三态 / 撤回 / **设置指导**（HTTP 入口下如何启用浏览器系统通知）
+- DSH 设置页「**通知设置**」分区（桌面端/浏览器均可用）：总开关 / 三态 / 撤回 / **设置指导**（HTTP 入口下如何启用浏览器系统通知）
 
 ### 安卓端（App：DSH Remote · Notify）
 
@@ -48,14 +51,17 @@ pnpm 在 PATH 中（`dsh plugin` 命令依赖）：`npm install -g pnpm`
 ### 安装插件
 
 ```bash
-dsh plugin --profile web add github:DJmanito/dsh-notify
-# 安装后需重启 DSH
+# --profile 换成你的 DSH profile 名(桌面端 DSH 常见为 desktop;纯 Web 入口可为 web 等)
+dsh plugin --profile desktop add github:DJmanito/dsh-notify
+# 安装后需重启 DSH(桌面端 = 完全退出后重开)
 ```
+
+> 桌面端与浏览器访问**共用同一个 DSH 后端**，插件装一次即两端生效：桌面窗口经启动注入行获得通知，浏览器/手机经同一 web 服务获得相同状态。
 
 ### 删除插件
 
 ```bash
-dsh plugin --profile web remove @djmanito/dsh-notify
+dsh plugin --profile desktop remove @djmanito/dsh-notify
 # 删除后需重启 DSH
 ```
 
@@ -83,7 +89,21 @@ GitHub Releases 下载 `DSH.Remote.Notify.apk` 安装；源码在 `android/` 目
 
 - App 后台服务（dataSync）按轮询间隔（默认 20s，5-60 可配）拉取插件的只读端点 `GET /notify-state`（状态快照，含审批通过/不通过判定）；
 - 纯 JVM 状态机做**边沿触发 + 会话级去重**（基线帧静默，冷启动不重放），转 NotificationManager 推送；
-- 插件侧秒级检测：运行中会话差集 = 完成（**子代理会话不计入**，其完成不触发通知；子代理的审批/问答照常通知）；事件流末尾审批请求未决 = 待审批；问答工具调用未应答 = 待回答。
+- 插件侧秒级检测：
+  - **运行中集合**：主会话的 agent 运行中 → 计入；**子代理运行中 → 归属到其顶层主会话**（沿 `parentSession` 谱系向上归并，`delegationDepth=1` 时父会话离线也能归属）。因此**主代理结束但子代理仍在跑 → 主会话仍在运行集合中 → 不发完成通知**；主代理与全部子代理都结束 → 集合清空 → 边沿触发"会话已完成"。
+  - 子代理会话自身从不直接计入运行集合（其单独完成不触发通知）；对话 fork 视为顶层会话，完成照常通知；
+  - 事件流末尾审批请求未决 = 待审批；问答工具调用未应答 = 待回答；**子代理的审批/问答照常通知**（那是真正中断进度的事件）。
+- 检测与推送同源于 `/notify-state`，因此 PC 桌面端、浏览器、手机 App 三端**完成语义完全一致**。
+
+## 环境兼容
+
+| 环境 | 页面注入通道 | 说明 |
+|---|---|---|
+| **DSH 桌面端**（最新 Electron 壳） | `webserver/index-inject` 结构化 script 行 | 桌面壳静态服务 index.html 并经启动 IPC 携带注入行，页面端解释执行；桌面端对 Notification 权限自动放行，免授权弹窗 |
+| **浏览器访问**（最新 DSH Web 入口） | 结构化行 + `tapIndex` 双通道 | 服务端 `renderIndex` 把行渲染进 index.html；`tapIndex` 原始转换并存，注入脚本内置幂等守卫（`window.__dshRemoteNotifyInjected`），重复注入无副作用 |
+| **旧版 DSH**（仅浏览器 Web 入口） | `tapIndex` 原始转换 | 旧版无 `webserver/index-inject` 事件，订阅静默无效、自动回落；事件流读取回落 `session.events`，标题读取兼容 `{title}` 旧形态 |
+
+> 手机端 App 不依赖页面注入（独立轮询 `/notify-state`），新旧环境均不受影响。
 
 ## 免责
 

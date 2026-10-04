@@ -131,7 +131,7 @@ function RemoteNotifySettings() {
     h(Row, { key: 'approval', label: '审批/问答 触发通知', hint: '一直通知=每次都弹新通知;静默通知=更新已有通知(仅首次弹+响)', control: h(ModeBtns, { modes: M3, current: s.approval, onPick: (v) => patch({ approval: v }) }) }),
     h(Row, { key: 'cleanup', label: '完成审批撤回消息通知', hint: '当审批通过后,撤回之前的等待审批/问答的通知', control: h(Toggle, { on: s.approvalCleanup, onChange: () => patch({ approvalCleanup: !s.approvalCleanup }) }) }),
     h(Row, { key: 'done', label: '审批/问答 完成通知', hint: '审批/问答结束后,是否发"✅ 通过 / ❌ 不通过"通知', control: h(ModeBtns, { modes: M2, current: s.approvalDone, onPick: (v) => patch({ approvalDone: v }) }) }),
-    h(Row, { key: 'task', label: '任务完成 触发通知', hint: '语义同"审批/问答 触发通知"', control: h(ModeBtns, { modes: M3, current: s.taskDone, onPick: (v) => patch({ taskDone: v }) }) }),
+    h(Row, { key: 'task', label: '任务完成 触发通知', hint: '主代理及其全部子代理都结束后才通知;语义同"审批/问答 触发通知"', control: h(ModeBtns, { modes: M3, current: s.taskDone, onPick: (v) => patch({ taskDone: v }) }) }),
     h('div', { style: { marginTop: 12, fontSize: 12, color: 'var(--dsw-alias-state-warn-primary,#b45309)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
       '警告:请勿将 DSH 暴露到广域网,外网请使用 WireGuard 等方式连接!'),
     h('div', { style: { marginTop: 8, fontSize: 11, color: 'var(--dsw-alias-label-tertiary,#8b93a1)' } }, '设置保存在本地(本浏览器 localStorage);不同设备设置独立,不同步。'),

@@ -1,6 +1,6 @@
 {
   "name": "@djmanito/dsh-notify",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "DSH 插件:浏览器推送通知(系统通知 ⏳/✅/❌)+ 设置页「通知设置」分区;为 DSH Remote · Notify(安卓 App)提供 /notify-state 通知事件源。",
   "author": "DJmanito",
   "license": "MIT",
@@ -21,7 +21,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "build:client": "node client/build.mjs"
+    "build:client": "node client/build.mjs",
+    "test": "node tools/test-logic.mjs && node tools/smoke-apply.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.9"
