@@ -1,5 +1,7 @@
 // dsh-notify 端到端冒烟:mock ctx → apply() → 轮询 → /notify-state 契约验证
 // 覆盖:子代理门控完成语义(边沿)、事件流双通道、readTitle 双通道、index 注入双通道
+// 注意:测试运行在本机 win32 上,边沿会触发 WinRT toast 的 spawn → 用 env 守卫关掉
+process.env.DSH_NOTIFY_NO_TOAST = '1'
 import assert from 'node:assert/strict'
 import plugin from '../lib/index.js'
 
@@ -40,10 +42,10 @@ function apply() {
 function emit(type, payload) {
   for (const cb of events.get(type) ?? []) cb(payload)
 }
-async function call(path, method = 'GET') {
+async function call(path, method = 'GET', body = null, headers = {}) {
   const qIdx = path.indexOf('?')
   const routePath = qIdx >= 0 ? path.slice(0, qIdx) : path
-  const req = { method, url: path, on: (ev, cb) => { if (ev === 'end') setTimeout(cb, 0) } }
+  const req = { method, url: path, headers, on: (ev, cb) => { if (ev === 'data') body && setTimeout(() => cb(body), 0); if (ev === 'end') setTimeout(cb, 0) } }
   let headersOut = {}, bodyOut = ''
   const res = {
     writeHead: (code, h) => { headersOut = h },
@@ -56,7 +58,7 @@ async function call(path, method = 'GET') {
 apply()
 
 console.log('路由注册')
-for (const p of ['/notify-state', '/notify-test', '/notify-ops', '/notify-smoke']) {
+for (const p of ['/notify-state', '/notify-test', '/notify-ops', '/notify-smoke', '/notify-debug', '/notify-settings']) {
   assert.ok(routes.has(p), `missing route ${p}`)
   console.log('  ✓', p)
 }
@@ -199,6 +201,26 @@ console.log('调试端点')
   r = await state()
   assert.ok(!r.runningSessionIds.includes('test-done'))
   console.log('  ✓ /notify-test 四态调试(on/off 复原)')
+}
+
+console.log('设置同步(/notify-settings,UA 归因)')
+{
+  const ELECTRON_UA = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/120.0 Electron/28.1.0' }
+  const CHROME_UA = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/120.0 Safari/537.36' }
+  // 桌面壳上报 → 生效
+  await call('/notify-settings', 'POST', JSON.stringify({ master: false, approval: 'off', taskDone: 'off' }), ELECTRON_UA)
+  await new Promise((r) => setTimeout(r, 5))
+  let d = (await call('/notify-debug')).json()
+  assert.equal(d.dbg.winSettings.master, false, '桌面壳 master 应生效')
+  assert.equal(d.dbg.winSettings.approval, 'off')
+  assert.equal(d.dbg.winSettings.taskDone, 'off')
+  console.log('  ✓ 桌面壳(Electron UA)上报 → winSettings 生效')
+  // 远程浏览器上报 → 忽略(不反向控制宿主机通知)
+  await call('/notify-settings', 'POST', JSON.stringify({ master: true }), CHROME_UA)
+  await new Promise((r) => setTimeout(r, 5))
+  d = (await call('/notify-debug')).json()
+  assert.equal(d.dbg.winSettings.master, false, '浏览器 UA 上报不应覆盖宿主设置')
+  console.log('  ✓ 远程浏览器(Chrome UA)上报 → 忽略')
 }
 
 console.log('\n端到端冒烟全部通过 ✓')

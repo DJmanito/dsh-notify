@@ -15,6 +15,8 @@
   - ⏳ DSH 会话等待审批 / ⏳ DSH 会话等待回答
   - ✅ 审批已通过 / ❌ 审批未通过 / ✅ 已收到回答
   - ✅ DSH 会话已完成
+- **Windows 桌面端额外走 WinRT 直发通道**：插件后端在事件边沿直接调用 Windows 通知中心（`ToastNotificationManager`，AUMID `DJmanito.DshNotify`）——弥补 DSH 桌面壳 Electron 未设 `AppUserModelID` 导致渲染器 Notification 静默失效的问题（浏览器环境不受此影响，两端通道并存、互不干扰）。**该通道同样受「通知设置」管辖**（总开关 / 审批 / 任务完成三态）：注入脚本在设置变化时上报后端，后端只认桌面壳（Electron UA）的上报——WinRT 是宿主机本地通知，由本机桌面窗口的设置管理。
+  - **AUMID 污染自愈**：若宿主应用（或其进程树）设置了"包标识"形态的 AppUserModelID，子进程会继承它，WinRT 将以 `0x80073D54（进程没有程序包标识符）`拒绝发通知。插件自动检测该错误码，改经 **WMI `Win32_Process.Create`**（进程由 WMI 服务创建、token 无继承标识）重发——两级尝试全程无感；任何一级失败仅记录到 `/notify-debug` 的 `lastToastError`，绝不影响 DSH 主流程
 - **完成语义**：主代理结束**且其全部子代理也结束**才发"会话已完成"（主代理结束但子代理仍在跑 → 不通知）；子代理的审批/问答照常通知
 - 每类三态：**一直通知**（每次触发弹新通知+响铃）/ **静默通知**（仅首次弹+响，之后更新已有通知）/ **关闭通知**
 - **完成审批自动撤回**：审批/问答通过后，自动撤掉之前的"等待"通知（可开关）
@@ -82,8 +84,11 @@ GitHub Releases 下载 `DSH.Remote.Notify.apk` 安装；源码在 `android/` 目
 |---|---|
 | `GET /notify-state` | 状态快照（含 decisions 审批判定），手机 App 轮询源 |
 | `GET /notify-test?mode=approval\|done\|question\|off` | 四态调试（仅内存，off 复原） |
+| `GET /notify-test-toast` | 手动触发一条 WinRT 审批 toast（验证 spawn 链；结果看 `/notify-debug`） |
 | `GET /notify-smoke` | 注入脚本冒烟报告（Notification API 可用性） |
-| `GET /notify-ops` | 通知操作日志（post/cancel，诊断用） |
+| `GET /notify-ops` | 通知操作日志（post/cancel/win-toast，诊断用） |
+| `GET /notify-debug` | 运行时诊断（轮询计数、心跳、会话/代理计数、toast 计数、生效设置） |
+| `POST /notify-settings` | 设置同步（注入脚本上报；仅桌面壳 UA 生效，管理 WinRT 通道） |
 
 ## 工作原理
 
@@ -99,7 +104,7 @@ GitHub Releases 下载 `DSH.Remote.Notify.apk` 安装；源码在 `android/` 目
 
 | 环境 | 页面注入通道 | 说明 |
 |---|---|---|
-| **DSH 桌面端**（最新 Electron 壳） | `webserver/index-inject` 结构化 script 行 | 桌面壳静态服务 index.html 并经启动 IPC 携带注入行，页面端解释执行；桌面端对 Notification 权限自动放行，免授权弹窗 |
+| **DSH 桌面端**（最新 Electron 壳） | `webserver/index-inject` 结构化 script 行 + **WinRT 直发** | 桌面壳静态服务 index.html 并经启动 IPC 携带注入行，页面端解释执行；桌面端对 Notification 权限自动放行，免授权弹窗。**另**：插件后端在事件边沿直接调用 Windows 通知中心（WinRT `ToastNotificationManager`），弥补桌面壳 Electron 未设 `AppUserModelID` 导致渲染器 Notification 静默失效的问题 |
 | **浏览器访问**（最新 DSH Web 入口） | 结构化行 + `tapIndex` 双通道 | 服务端 `renderIndex` 把行渲染进 index.html；`tapIndex` 原始转换并存，注入脚本内置幂等守卫（`window.__dshRemoteNotifyInjected`），重复注入无副作用 |
 | **旧版 DSH**（仅浏览器 Web 入口） | `tapIndex` 原始转换 | 旧版无 `webserver/index-inject` 事件，订阅静默无效、自动回落；事件流读取回落 `session.events`，标题读取兼容 `{title}` 旧形态 |
 

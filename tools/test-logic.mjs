@@ -1,7 +1,7 @@
 // dsh-notify 运行集合判定逻辑单测(纯 node,无依赖)
 // 场景覆盖:主代理/子代理/多级子代理/fork 会话 的完成边沿语义
 import assert from 'node:assert/strict'
-import { isSubagentHeader, topRootOf, computeRunningSet, readEvents } from '../lib/index.js'
+import { isSubagentHeader, topRootOf, computeRunningSet, readEvents, buildToastXml, escapeXml, classifyPageUa, buildToastScripts } from '../lib/index.js'
 
 const H = (id, extra) => ({ id, ...extra })
 const map = (list) => new Map(list.map((h) => [h.id, h]))
@@ -83,6 +83,97 @@ console.log('readEvents(新旧 Session 双通道)')
   t('snapshotEvents 抛错 → 回落 events', () =>
     assert.deepEqual(readEvents({ snapshotEvents: () => { throw new Error('x') }, events: evs }), evs))
   t('都没有 → []', () => assert.deepEqual(readEvents({}), []))
+}
+
+console.log('buildToastXml(Windows toast XML)')
+{
+  t('基本结构:ToastText02 + 音频', () => {
+    const x = buildToastXml('⏳ DSH 会话等待审批', '会话A')
+    assert.ok(x.startsWith('<toast>'))
+    assert.ok(x.includes('<audio silent="false" />'))
+    assert.ok(x.includes('template="ToastText02"'))
+    assert.ok(x.includes('<text id="1">⏳ DSH 会话等待审批</text>'))
+    assert.ok(x.includes('<text id="2">会话A</text>'))
+  })
+  t('XML 特殊字符转义', () => {
+    const x = buildToastXml('A & B <C> "D" \'E\'', 'body')
+    assert.ok(x.includes('A &amp; B &lt;C&gt; &quot;D&quot; &apos;E&apos;'))
+  })
+  t('超长截断(标题100/正文200)', () => {
+    const x = buildToastXml('x'.repeat(300), 'y'.repeat(300))
+    const m1 = x.match(/<text id="1">([^<]*)<\/text>/)
+    const m2 = x.match(/<text id="2">([^<]*)<\/text>/)
+    assert.equal(m1[1].length, 100)
+    assert.equal(m2[1].length, 200)
+  })
+  t('空值不崩', () => {
+    const x = buildToastXml(null, undefined)
+    assert.ok(x.includes('<text id="1"></text>'))
+  })
+  t('escapeXml 纯转义', () => assert.equal(escapeXml('<a b="c">&\''), '&lt;a b=&quot;c&quot;&gt;&amp;&apos;'))
+}
+
+console.log('classifyPageUa(设置归因)')
+{
+  t('手机 App WebView(DshNotify)→ phone', () =>
+    assert.equal(classifyPageUa('Mozilla/5.0 (Linux) DshNotify/1.0'), 'phone'))
+  t('DSH 桌面壳(Electron)→ desktop-shell', () =>
+    assert.equal(classifyPageUa('Mozilla/5.0 Chrome/120 Electron/28.0'), 'desktop-shell'))
+  t('Chrome 浏览器 → browser', () =>
+    assert.equal(classifyPageUa('Mozilla/5.0 (Windows NT 10.0) Chrome/120 Safari/537.36'), 'browser'))
+  t('Firefox → browser', () =>
+    assert.equal(classifyPageUa('Mozilla/5.0 Firefox/121.0'), 'browser'))
+  t('Edge(含 Edge 标记)→ browser', () =>
+    assert.equal(classifyPageUa('Mozilla/5.0 Edg/120.0'), 'browser'))
+  t('PowerShell/curl 探测 → other', () =>
+    assert.equal(classifyPageUa('Mozilla/5.0 (compatible; PowerShell/7.4)'), 'other'))
+  t('空 UA → unknown', () => assert.equal(classifyPageUa(''), 'unknown'))
+}
+
+console.log('buildToastScripts(WinRT spawn 双脚本 + broker 回退)')
+{
+  t('父脚本包含直发 + 0x80073D54 判定 + WMI broker 回退', () => {
+    const { parentRaw } = buildToastScripts('T', 'B')
+    assert.ok(parentRaw.includes('CreateToastNotifier'))
+    assert.ok(parentRaw.includes('0x80073D54'))
+    assert.ok(parentRaw.includes('Win32_Process'))
+    assert.ok(parentRaw.includes('CommandLine'))
+    assert.ok(parentRaw.includes('exit 4')) // broker 被拒 → 4
+  })
+  t('父脚本把孙脚本以 -EncodedCommand base64 注入(无嵌套引号)', () => {
+    const { parentRaw } = buildToastScripts('T', 'B')
+    assert.ok(parentRaw.includes('-EncodedCommand '))
+    // 注入的 base64 段应为纯 base64(不含单/双引号、空格)
+    const m = parentRaw.match(/-EncodedCommand ([A-Za-z0-9+/=]+)/)
+    assert.ok(m, '未找到 -EncodedCommand <b64>')
+    assert.ok(/^[A-Za-z0-9+/=]+$/.test(m[1]))
+  })
+  t('孙脚本独立可发(直发,无 broker)', () => {
+    const { gcRaw } = buildToastScripts('T', 'B')
+    assert.ok(gcRaw.includes('CreateToastNotifier'))
+    assert.ok(gcRaw.includes('exit 0'))
+    assert.ok(!gcRaw.includes('Win32_Process'), '孙脚本不应再套 broker')
+  })
+  t('base64 往返:parentB64/gcB64 可还原出对应 raw', () => {
+    const { parentB64, gcB64, parentRaw, gcRaw } = buildToastScripts('T', 'B')
+    assert.equal(Buffer.from(parentB64, 'base64').toString('utf16le'), parentRaw)
+    assert.equal(Buffer.from(gcB64, 'base64').toString('utf16le'), gcRaw)
+  })
+  t('XML 特殊字符正确嵌入 PS 单引号串(escapeXml 后再 psq)', () => {
+    const { parentRaw, gcRaw } = buildToastScripts('A & B <C> "D" \'E\'', 'body')
+    const expected = "A &amp; B &lt;C&gt; &quot;D&quot; &apos;E&apos;"
+    for (const raw of [parentRaw, gcRaw]) {
+      const line = raw.split('\n').find((l) => l.startsWith('$x.LoadXml('))
+      assert.ok(line, '缺少 LoadXml 行')
+      assert.ok(line.startsWith("$x.LoadXml('"), 'LoadXml 参数应为单引号串')
+      assert.ok(line.endsWith("')"), 'LoadXml 行应以 \') 收尾')
+      assert.ok(line.includes(expected), '转义后的标题未嵌入: ' + line.slice(0, 120))
+    }
+  })
+  t('自定义 aumid 生效', () => {
+    const { gcRaw } = buildToastScripts('T', 'B', 'X.Custom')
+    assert.ok(gcRaw.includes("CreateToastNotifier('X.Custom')"))
+  })
 }
 
 console.log(`\n全部通过:${passed} 项`)
