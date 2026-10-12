@@ -1,7 +1,7 @@
 // dsh-notify 运行集合判定逻辑单测(纯 node,无依赖)
 // 场景覆盖:主代理/子代理/多级子代理/fork 会话 的完成边沿语义
 import assert from 'node:assert/strict'
-import { isSubagentHeader, topRootOf, computeRunningSet, readEvents, buildToastXml, escapeXml, classifyPageUa, buildToastScripts, resolveSessionTitle, shortSid } from '../lib/index.js'
+import { isSubagentHeader, topRootOf, computeRunningSet, readEvents, buildToastXml, escapeXml, classifyPageUa, buildToastScripts, resolveSessionTitle, shortSid, selfCompactState, lineageSids, gateConfigFromEnv } from '../lib/index.js'
 
 const H = (id, extra) => ({ id, ...extra })
 const map = (list) => new Map(list.map((h) => [h.id, h]))
@@ -223,5 +223,71 @@ console.log('resolveSessionTitle(标题多源回落:同步→缓存→顶层)')
     assert.equal(shortSid('no-prefix-1234567890'), '会话 no-prefi')
   })
 }
+
+console.log('selfCompactState(自助压缩登记状态:事件流痕迹判定)')
+{
+  const req = () => ({ type: 'tool/call', data: { callId: 'c1', name: 'request_compact', arguments: {} } })
+  const start = () => ({ type: 'compaction/start', data: {} })
+  const end = () => ({ type: 'compaction/end', data: {} })
+  const wake = () => ({ type: 'user/message', data: { role: 'user', source: { kind: 'plugin:hybrid-idle-compactor', form: 'notice' } } })
+  t('空流 → none', () => assert.equal(selfCompactState([]), 'none'))
+  t('无登记 → none', () => assert.equal(selfCompactState([{ type: 'tool/call', data: { name: 'pwsh' } }]), 'none'))
+  t('★ 有登记、无消费标记 → request(压缩即将开始或已跳过,由宽限兜底)', () =>
+    assert.equal(selfCompactState([req()]), 'request'))
+  t('★ 登记后压缩开始 → inflight(压缩进行中,持续 hold)', () =>
+    assert.equal(selfCompactState([req(), start()]), 'inflight'))
+  t('★ 登记后压缩完成(end)→ none(已处理,会话真结束可放行)', () =>
+    assert.equal(selfCompactState([req(), start(), end()]), 'none'))
+  t('★ 登记后压缩器唤醒消息 → none(压缩成功唤醒路径)', () =>
+    assert.equal(selfCompactState([req(), start(), wake()]), 'none'))
+  t('历史登记已被消费、其后无新登记 → none(不误判)', () =>
+    assert.equal(selfCompactState([req(), start(), end(), { type: 'assistant/message', data: {} }]), 'none'))
+  t('压缩完成后又新登记(未消费)→ request(以最后一次登记为准)', () =>
+    assert.equal(selfCompactState([req(), start(), end(), req()]), 'request'))
+  t('其他工具调用/压缩器外的 user 消息不是消费标记', () =>
+    assert.equal(selfCompactState([req(), { type: 'user/message', data: { role: 'user', source: { kind: 'other' } } }]), 'request'))
+  t('compaction/prune 等旁支事件不算 start', () =>
+    assert.equal(selfCompactState([req(), { type: 'compaction/prune', data: {} }]), 'request'))
+}
+
+console.log('lineageSids(顶层会话的谱系集合:后台作业按谱系枚举)')
+{
+  const hdr = map([
+    H('main'),
+    H('sub1', { origin: 'subagent', delegationDepth: 1, parentSession: 'main' }),
+    H('sub2', { origin: 'subagent', delegationDepth: 2, parentSession: 'sub1' }),
+    H('other'),
+  ])
+  const sessions = [
+    { id: 'main', header: H('main') },
+    { id: 'sub1', header: H('sub1', { origin: 'subagent', delegationDepth: 1, parentSession: 'main' }) },
+    { id: 'sub2', header: H('sub2', { origin: 'subagent', delegationDepth: 2, parentSession: 'sub1' }) },
+    { id: 'other', header: H('other') },
+  ]
+  t('主会话谱系 = 自身+全部后代(含深层)', () =>
+    assert.deepEqual([...lineageSids('main', sessions, hdr)].sort(), ['main', 'sub1', 'sub2']))
+  t('他会话不在谱系内', () =>
+    assert.deepEqual([...lineageSids('other', sessions, hdr)], ['other']))
+  t('空 sessions → 仅自身', () =>
+    assert.deepEqual([...lineageSids('main', [], new Map())], ['main']))
+  t('header 缺失的会话不崩、不误纳', () => {
+    const s = [{ id: 'main', header: H('main') }, { id: 'x' }]
+    assert.deepEqual([...lineageSids('main', s, hdr)].sort(), ['main'])
+  })
+}
+
+console.log('gateConfigFromEnv(门控时序参数:5s 观察窗 / 10s 兜底 / 300s 压缩卡死护栏)')
+t('默认 → 5000/10000/300000', () => {
+  assert.deepEqual(gateConfigFromEnv({}), { watchMs: 5000, fallbackMs: 10000, inflightMs: 300000 })
+})
+t('env 覆盖 → 取给定值', () => {
+  assert.deepEqual(gateConfigFromEnv({ DSH_NOTIFY_DONE_GRACE_MS: '8000', DSH_NOTIFY_DONE_FALLBACK_MS: '15000' }), { watchMs: 8000, fallbackMs: 15000, inflightMs: 300000 })
+})
+t('0 为合法值(0=不等,旧当拍语义)', () => {
+  assert.deepEqual(gateConfigFromEnv({ DSH_NOTIFY_DONE_GRACE_MS: '0' }), { watchMs: 0, fallbackMs: 10000, inflightMs: 300000 })
+})
+t('非法(非数字/负数/空串)→ 回落默认', () => {
+  assert.deepEqual(gateConfigFromEnv({ DSH_NOTIFY_DONE_GRACE_MS: 'abc', DSH_NOTIFY_DONE_FALLBACK_MS: '-5', DSH_NOTIFY_DONE_INFLIGHT_GRACE_MS: '' }), { watchMs: 5000, fallbackMs: 10000, inflightMs: 300000 })
+})
 
 console.log(`\n全部通过:${passed} 项`)
