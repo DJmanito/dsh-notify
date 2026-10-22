@@ -1,6 +1,8 @@
 package com.dsh.notify.notify
 
 import android.content.Context
+import android.util.Log
+import com.dsh.notify.Settings
 import com.dsh.notify.SettingsSync
 
 /**
@@ -15,7 +17,24 @@ import com.dsh.notify.SettingsSync
  */
 object EventPoster {
 
+    private const val TAG = "EventPoster"
+
     private val postedWaitIds = mutableMapOf<String, Int>() // "a$sid"/"q$sid" -> notifId
+
+    /**
+     * U4: SessionDone 黑名单过滤(纯函数,JVM 可测)。逐 sid 判定,
+     * 把 sids 分成 (未命中, 命中) 两组,均保持原顺序。
+     * 黑名单来源复用 U3 的 Settings.sessionBlacklist(键 session_blacklist);本函数不碰 SharedPreferences。
+     */
+    fun splitByBlacklist(sids: List<String>, blacklist: Collection<String>): Pair<List<String>, List<String>> {
+        val keep = ArrayList<String>()
+        val hit = ArrayList<String>()
+        val trimmed = blacklist.map { it.trim() }.toSet()
+        for (sid in sids) {
+            if (sid.trim() in trimmed) hit.add(sid) else keep.add(sid)
+        }
+        return keep to hit
+    }
 
     fun post(c: Context, st: SettingsSync.ServerSettings, events: List<NotifyEvent>, decisions: Map<String, String> = emptyMap()) {
         for (e in events) {
@@ -63,7 +82,13 @@ object EventPoster {
                 }
                 is NotifyEvent.SessionDone -> {
                     if (!st.master || st.taskDone == "off") continue
-                    e.sids.forEach { sid ->
+                    // U4: 黑名单过滤——逐 sid 判定(来源 = U3 的 Settings.sessionBlacklist):
+                    // 命中 = 不发通知 + 写一条日志;未命中 = 照常发。空黑名单时行为与原逻辑一致。
+                    val (toPost, skipped) = splitByBlacklist(e.sids, Settings.sessionBlacklist(c))
+                    skipped.forEach { sid ->
+                        LogBus.add("INFO", "SessionDone: sid=$sid 命中会话黑名单,跳过通知")
+                    }
+                    toPost.forEach { sid ->
                         val id = if (st.taskDone == "silent") NotificationHelper.doneId(sid) else -1
                         NotificationHelper.post(c, "✅ DSH 会话已完成", e.title, NotificationHelper.CHANNEL_DONE, id)
                     }

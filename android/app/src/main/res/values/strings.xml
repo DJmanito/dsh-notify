@@ -25,6 +25,10 @@
     <string name="interval_label">轮询间隔(秒 5-60)</string>
     <string name="wan_lan_warning">警告：请勿将 DSH 暴露到广域网，外网请使用 WireGuard 等方式连接！</string>
     <string name="notify_denied_hint">通知权限被拒绝:可在 系统设置 → 应用 → DSH Remote · Notify → 通知 中开启;当前 WebView 功能不受影响</string>
+    <string name="blacklist_title">会话ID黑名单</string>
+    <string name="blacklist_hint">会话完成后命中黑名单则不发通知;仅存本机(各端各自记忆)。回车或逗号添加,点 × 删除。会话ID可从 DSH 网页侧边栏会话行的 ⋯ 菜单「复制会话 ID」取得,请粘贴完整 ID(含 session- 前缀),短 ID 不会命中</string>
+    <string name="hint_session_id">会话ID(回车或逗号添加)</string>
+    <string name="bl_tag_close">×</string>
 
     <!-- 通知 -->
     <string name="fgs_title">DSH Remote · Notify 通知监控中</string>

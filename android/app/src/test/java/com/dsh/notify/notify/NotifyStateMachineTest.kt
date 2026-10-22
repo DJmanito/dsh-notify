@@ -217,4 +217,45 @@ class NotifyStateMachineTest {
         assertEquals(listOf("a"), done.sids)
         assertEquals("任务 A", done.title)
     }
+
+    // ---- U4: SessionDone 黑名单过滤(EventPoster.splitByBlacklist) ----
+    // 黑名单来源 = U3 的 Settings.sessionBlacklist(键 session_blacklist);本层只测纯判定函数,
+    // Context 粘合层(prefs 读取 + NotificationHelper.post)需 Android 环境,与 SettingsTest 同口径。
+
+    @Test
+    fun `黑名单 sid 不发 非黑名单发`() {
+        val (toPost, skipped) = EventPoster.splitByBlacklist(listOf("a", "b"), setOf("b"))
+        assertEquals(listOf("a"), toPost)
+        assertEquals(listOf("b"), skipped)
+    }
+
+    @Test
+    fun `空黑名单保持原行为(全部发 无跳过)`() {
+        val (toPost, skipped) = EventPoster.splitByBlacklist(listOf("a", "b"), emptyList())
+        assertEquals(listOf("a", "b"), toPost)
+        assertTrue(skipped.isEmpty())
+    }
+
+    @Test
+    fun `全部命中时全部跳过`() {
+        val (toPost, skipped) = EventPoster.splitByBlacklist(listOf("a", "b"), setOf("a", "b", "c"))
+        assertTrue(toPost.isEmpty())
+        assertEquals(listOf("a", "b"), skipped)
+    }
+
+    @Test
+    fun `多 sid 混合逐个判定且保持原顺序`() {
+        val (toPost, skipped) = EventPoster.splitByBlacklist(
+            listOf("s1", "s2", "s3", "s4"), setOf("s4", "s1")
+        )
+        assertEquals(listOf("s2", "s3"), toPost)
+        assertEquals(listOf("s1", "s4"), skipped)
+    }
+
+    @Test
+    fun `sid 带前后空白 与黑名单去空白后全等 判命中`() {
+        val (toPost, skipped) = EventPoster.splitByBlacklist(listOf(" abc ", "def"), setOf("abc"))
+        assertEquals(listOf("def"), toPost)
+        assertEquals(listOf(" abc "), skipped)
+    }
 }

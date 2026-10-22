@@ -6,8 +6,12 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -26,12 +30,21 @@ import java.net.URL
 import kotlin.concurrent.thread
 
 /**
- * 设置页:返回+标题 / 连接设置卡(测试并保存) / 通知卡(总开关+三态行+撤回开关,本地保存) /
+ * 设置页:返回+标题 / 连接设置卡(测试并保存) / 通知卡(总开关+三态行+撤回开关+会话ID黑名单,本地保存) /
  * 系统通知与后台设置跳转 / 日志独立页 / 轮询间隔 / 版本页脚。
  */
 class SettingsActivity : AppCompatActivity() {
 
-    companion object { private const val REQ_POST_NOTIFICATIONS = 2001 }
+    companion object {
+        private const val REQ_POST_NOTIFICATIONS = 2001
+
+        /**
+         * 黑名单输入框切分:整段按半/全角逗号切分,逐段 trim,丢弃空段。
+         * 纯函数,供独立单测;UI 层把结果逐段提交(空串/重复跳过)后清空输入框。
+         */
+        fun splitBlacklistTokens(raw: String): List<String> =
+            raw.split(',', '，').map { it.trim() }.filter { it.isNotEmpty() }
+    }
 
     private lateinit var etHost: EditText
     private lateinit var etPort: EditText
@@ -41,8 +54,11 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var tvIntervalResult: TextView
     private lateinit var tvSettingsState: TextView
     private lateinit var modeRows: LinearLayout
+    private lateinit var etBlacklist: EditText
+    private lateinit var blTags: LinearLayout
 
     private var serverSettings: SettingsSync.ServerSettings? = null
+    private var sessionBlacklist: List<String> = emptyList()
     private var programmaticSwitch = false
     private var pendingMasterOn = false
 
@@ -65,6 +81,10 @@ class SettingsActivity : AppCompatActivity() {
         tvIntervalResult = findViewById(R.id.tvIntervalResult)
         tvSettingsState = findViewById(R.id.tvSettingsState)
         modeRows = findViewById(R.id.modeRows)
+        etBlacklist = findViewById(R.id.etBlacklist)
+        blTags = findViewById(R.id.blTags)
+        sessionBlacklist = Settings.sessionBlacklist(this)
+        renderBlacklistTags()
         findViewById<View>(R.id.btnBack).setOnClickListener { finish() }
 
         etHost.setText(Settings.host(this))
@@ -77,6 +97,27 @@ class SettingsActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.btnSysNotif).setOnClickListener { openSysNotif() }
         findViewById<Button>(R.id.btnSysBg).setOnClickListener { openSysBg() }
+
+        // 黑名单输入:回车(IME action)提交整段;逗号(半/全角)出现时把整段按逗号切分,逐段提交后清空输入框
+        etBlacklist.setOnEditorActionListener { _, actionId, event ->
+            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_GO ||
+                (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
+            ) {
+                commitBlacklistToken(etBlacklist.text.toString())
+                etBlacklist.setText("")
+                true
+            } else false
+        }
+        etBlacklist.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable) {
+                val t = s.toString()
+                if (!t.contains(',') && !t.contains('，')) return
+                splitBlacklistTokens(t).forEach { commitBlacklistToken(it) }
+                s.clear()
+            }
+        })
 
         swMaster.setOnCheckedChangeListener { _, on ->
             if (programmaticSwitch) return@setOnCheckedChangeListener
@@ -359,6 +400,58 @@ class SettingsActivity : AppCompatActivity() {
                     tvIntervalResult.text = "本地已保存($iv 秒);服务端不可达,未同步 PC 面板"
                 }
             }
+        }
+    }
+
+    // ---------- 会话ID黑名单(U3: 本地存储;通知过滤归 U4) ----------
+
+    /** 提交一个标签:去空白,空串忽略,去重后落盘并刷新。 */
+    private fun commitBlacklistToken(token: String) {
+        val t = token.trim()
+        if (t.isEmpty() || t in sessionBlacklist) return
+        sessionBlacklist = sessionBlacklist + t
+        Settings.setSessionBlacklist(this, sessionBlacklist)
+        renderBlacklistTags()
+    }
+
+    private fun removeBlacklistTag(id: String) {
+        sessionBlacklist = sessionBlacklist - id
+        Settings.setSessionBlacklist(this, sessionBlacklist)
+        renderBlacklistTags()
+    }
+
+    /** 标签行:「会话ID ×」,点 × 删除;与三态行同款圆角描边风格。 */
+    private fun renderBlacklistTags() {
+        blTags.removeAllViews()
+        sessionBlacklist.forEach { id ->
+            val chip = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(4), dp(6), dp(4))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setStroke(dp(1), Color.parseColor("#4D6BFE"))
+                    setColor(Color.parseColor("#1F4D6BFE"))
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(6) }
+            }
+            chip.addView(TextView(this).apply {
+                text = id
+                textSize = 12f
+                setTextColor(Color.parseColor("#2B46C8"))
+            })
+            chip.addView(TextView(this).apply {
+                text = getString(R.string.bl_tag_close)
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTextColor(Color.parseColor("#2B46C8"))
+                setPadding(dp(8), 0, dp(4), 0)
+                isClickable = true
+                setOnClickListener { removeBlacklistTag(id) }
+            })
+            blTags.addView(chip)
         }
     }
 

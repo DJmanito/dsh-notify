@@ -32,6 +32,114 @@ object Settings {
 
     fun setPollIntervalSec(c: Context, s: Int) = prefs(c).edit().putInt("pollIntervalSec", s.coerceIn(5, 60)).apply()
 
+    // ---- 会话ID黑名单(U3: 本地存储 API;通知过滤归 U4) ----
+    // 契约: 文件 dsh_remote_prefs / 键 session_blacklist / 值为 JSON 字符串数组
+
+    const val KEY_SESSION_BLACKLIST = "session_blacklist"
+
+    /** 读: 容错解析,去空白,去重,剔除空串;任何非法输入返回空列表(不抛异常)。 */
+    fun sessionBlacklist(c: Context): List<String> =
+        parseBlacklist(prefs(c).getString(KEY_SESSION_BLACKLIST, null))
+
+    /** 写: 去空白/去重/剔除空串后 JSON 编码落盘。 */
+    fun setSessionBlacklist(c: Context, list: List<String>) {
+        prefs(c).edit().putString(KEY_SESSION_BLACKLIST, encodeBlacklist(normalizeBlacklist(list))).apply()
+    }
+
+    /** 规范化: trim → 剔除空串 → 去重(保首次出现顺序)。纯函数,JVM 可测。 */
+    fun normalizeBlacklist(raw: List<String>): List<String> {
+        val out = LinkedHashSet<String>()
+        raw.forEach { v -> val t = v.trim(); if (t.isNotEmpty()) out.add(t) }
+        return out.toList()
+    }
+
+    /** 编码为 JSON 数组字符串;仅转义 " \ 与 0x20 以下控制符。纯函数,JVM 可测。 */
+    fun encodeBlacklist(list: List<String>): String {
+        val sb = StringBuilder("[")
+        list.forEachIndexed { i, item ->
+            if (i > 0) sb.append(',')
+            sb.append('"')
+            item.forEach { ch ->
+                when (ch) {
+                    '"' -> sb.append("\\\"")
+                    '\\' -> sb.append("\\\\")
+                    '\b' -> sb.append("\\b")
+                    '\u000C' -> sb.append("\\f")
+                    '\n' -> sb.append("\\n")
+                    '\r' -> sb.append("\\r")
+                    '\t' -> sb.append("\\t")
+                    else -> if (ch.code < 0x20) sb.append(String.format("\\u%04x", ch.code)) else sb.append(ch)
+                }
+            }
+            sb.append('"')
+        }
+        return sb.append(']').toString()
+    }
+
+    /** 容错解析: 只接受 JSON 字符串数组;其余(null/非数组/非字符串元素/坏转义/尾逗号)一律返回空列表。 */
+    fun parseBlacklist(raw: String?): List<String> {
+        if (raw == null) return emptyList()
+        val s = raw.trim()
+        if (s.length < 2 || s[0] != '[' || s[s.length - 1] != ']') return emptyList()
+        val inner = s.substring(1, s.length - 1)
+        val out = ArrayList<String>()
+        var i = 0
+        var first = true
+        while (i < inner.length) {
+            while (i < inner.length && inner[i].isWhitespace()) i++
+            if (i >= inner.length) break
+            if (!first) {
+                if (inner[i] != ',') return emptyList()
+                i++
+                while (i < inner.length && inner[i].isWhitespace()) i++
+                if (i >= inner.length) return emptyList() // 尾逗号
+            }
+            val pair = readJsonString(inner, i) ?: return emptyList()
+            out.add(pair.first)
+            i = pair.second
+            first = false
+        }
+        return normalizeBlacklist(out)
+    }
+
+    /** 解析 s[start]=='"' 处的 JSON 字符串字面量;返回 (解码值, 闭引号后下标);坏转义/未闭合返回 null。 */
+    private fun readJsonString(s: String, start: Int): Pair<String, Int>? {
+        if (s[start] != '"') return null
+        val sb = StringBuilder()
+        var i = start + 1
+        while (true) {
+            if (i >= s.length) return null
+            val ch = s[i]
+            when {
+                ch == '"' -> return sb.toString() to (i + 1)
+                ch == '\\' -> {
+                    i++
+                    if (i >= s.length) return null
+                    when (s[i]) {
+                        '"' -> sb.append('"')
+                        '\\' -> sb.append('\\')
+                        '/' -> sb.append('/')
+                        'b' -> sb.append('\b')
+                        'f' -> sb.append('\u000C')
+                        'n' -> sb.append('\n')
+                        'r' -> sb.append('\r')
+                        't' -> sb.append('\t')
+                        'u' -> {
+                            if (i + 5 > s.length) return null
+                            val code = s.substring(i + 1, i + 5).toIntOrNull(16)
+                            if (code == null || code > 0x10FFFF) return null
+                            if (code in 0xD800..0xDFFF) sb.append(code.toChar()) else sb.appendCodePoint(code)
+                            i += 4
+                        }
+                        else -> return null
+                    }
+                }
+                else -> sb.append(ch)
+            }
+            i++
+        }
+    }
+
     fun baseUrl(c: Context): String = "http://${host(c)}:${port(c)}/"
 
     fun hasServer(c: Context): Boolean = validateHost(host(c)) && validatePort(port(c))
