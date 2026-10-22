@@ -23,6 +23,13 @@
     <string name="btn_log">日志</string>
     <string name="log_title">监控日志</string>
     <string name="interval_label">轮询间隔(秒 5-60)</string>
+    <string name="wvbg_label">后台多久后关闭页面</string>
+    <string name="wvbg_hint">App 退到后台超过该时长后销毁内置页面释放资源(仅保留通知功能),再次打开时重新加载;选「不回收」则永不关闭</string>
+    <string name="wvbg_5">5 分钟</string>
+    <string name="wvbg_15">15 分钟</string>
+    <string name="wvbg_30">30 分钟</string>
+    <string name="wvbg_60">60 分钟</string>
+    <string name="wvbg_never">不回收</string>
     <string name="wan_lan_warning">警告：请勿将 DSH 暴露到广域网，外网请使用 WireGuard 等方式连接！</string>
     <string name="notify_denied_hint">通知权限被拒绝:可在 系统设置 → 应用 → DSH Remote · Notify → 通知 中开启;当前 WebView 功能不受影响</string>
     <string name="blacklist_title">会话ID黑名单</string>

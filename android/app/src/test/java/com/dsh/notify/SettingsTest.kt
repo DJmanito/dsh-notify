@@ -101,4 +101,67 @@ class SettingsTest {
         assertEquals(listOf("a", "b", "c"), tokens)
         tokens.forEach { assertFalse(it.contains(',')); assertFalse(it.contains('，')) }
     }
+
+    // ---- 后台回收 WebView 阈值(U1): 默认值 / 夹紧边界 / 存取往返(纯函数层) ----
+    // 纯 JVM 单测: Context 粘合层(webviewBgTimeoutMinutes/setWebviewBgTimeoutMinutes 的 prefs 读写)
+    // 需 Android 环境,不在本腿范围。
+
+    @Test
+    fun `wvbg 默认值 未设为 15`() {
+        assertEquals(15, Settings.webviewBgTimeoutFromStored(null))
+        assertEquals(Settings.DEFAULT_WEBVIEW_BG_TIMEOUT_MINUTES, 15)
+    }
+
+    @Test
+    fun `wvbg 读路径夹紧 0到1440 边界`() {
+        assertEquals(0, Settings.webviewBgTimeoutFromStored(-1))
+        assertEquals(0, Settings.webviewBgTimeoutFromStored(0))
+        assertEquals(5, Settings.webviewBgTimeoutFromStored(5))
+        assertEquals(1440, Settings.webviewBgTimeoutFromStored(1440))
+        assertEquals(1440, Settings.webviewBgTimeoutFromStored(1441))
+        assertEquals(1440, Settings.webviewBgTimeoutFromStored(Int.MAX_VALUE))
+    }
+
+    @Test
+    fun `wvbg 写路径夹紧 0到1440`() {
+        assertEquals(0, Settings.webviewBgTimeoutToStore(-100))
+        assertEquals(1440, Settings.webviewBgTimeoutToStore(99999))
+        assertEquals(30, Settings.webviewBgTimeoutToStore(30))
+    }
+
+    @Test
+    fun `wvbg 存取往返 先写后读一致(越界值先被夹紧)`() {
+        listOf(-5, 0, 1, 5, 15, 30, 60, 1439, 1440, 1441, 100000).forEach { v ->
+            val stored = Settings.webviewBgTimeoutToStore(v)
+            assertEquals(v.coerceIn(0, 1440), stored)
+            assertEquals(stored, Settings.webviewBgTimeoutFromStored(stored))
+        }
+    }
+
+    // ---- 后台超时判定(U1-修): isBgTimedOut 纯函数五分支(旧断言不动) ----
+
+    @Test
+    fun `isBgTimedOut 未超时 false`() {
+        assertFalse(MainActivity.isBgTimedOut(1_000_000L, 900_000L, 15)) // 差 100s < 15 分钟
+    }
+
+    @Test
+    fun `isBgTimedOut 刚超阈值 true`() {
+        assertTrue(MainActivity.isBgTimedOut(1_900_000L, 1_000_000L, 15)) // 差恰好 15 分钟,>= 边界
+    }
+
+    @Test
+    fun `isBgTimedOut 0 分钟 false`() {
+        assertFalse(MainActivity.isBgTimedOut(9_999_999_999L, 1_000_000L, 0))
+    }
+
+    @Test
+    fun `isBgTimedOut bgStartAt 为 0 false`() {
+        assertFalse(MainActivity.isBgTimedOut(5_000_000L, 0L, 15))
+    }
+
+    @Test
+    fun `isBgTimedOut now 早于 bgStartAt false`() {
+        assertFalse(MainActivity.isBgTimedOut(1_000_000L, 2_000_000L, 15))
+    }
 }

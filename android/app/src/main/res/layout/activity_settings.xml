@@ -270,6 +270,14 @@
             android:layout_marginTop="4dp"
             android:textSize="12sp" />
 
+        <!-- 后台多久后关闭页面(U1: 行容器,内容程序化生成与三态行同款;本地保存,0=不回收) -->
+        <LinearLayout
+            android:id="@+id/wvBgRows"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="vertical" />
+
         <!-- 页脚 -->
         <TextView
             android:id="@+id/tvFooter"

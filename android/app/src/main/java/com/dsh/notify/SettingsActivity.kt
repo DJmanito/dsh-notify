@@ -31,7 +31,7 @@ import kotlin.concurrent.thread
 
 /**
  * 设置页:返回+标题 / 连接设置卡(测试并保存) / 通知卡(总开关+三态行+撤回开关+会话ID黑名单,本地保存) /
- * 系统通知与后台设置跳转 / 日志独立页 / 轮询间隔 / 版本页脚。
+ * 系统通知与后台设置跳转 / 日志独立页 / 轮询间隔 / 后台多久后关闭页面(本地,0=不回收) / 版本页脚。
  */
 class SettingsActivity : AppCompatActivity() {
 
@@ -56,6 +56,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var modeRows: LinearLayout
     private lateinit var etBlacklist: EditText
     private lateinit var blTags: LinearLayout
+    private lateinit var wvBgRows: LinearLayout
 
     private var serverSettings: SettingsSync.ServerSettings? = null
     private var sessionBlacklist: List<String> = emptyList()
@@ -83,8 +84,10 @@ class SettingsActivity : AppCompatActivity() {
         modeRows = findViewById(R.id.modeRows)
         etBlacklist = findViewById(R.id.etBlacklist)
         blTags = findViewById(R.id.blTags)
+        wvBgRows = findViewById(R.id.wvBgRows)
         sessionBlacklist = Settings.sessionBlacklist(this)
         renderBlacklistTags()
+        renderWvBgRow()
         findViewById<View>(R.id.btnBack).setOnClickListener { finish() }
 
         etHost.setText(Settings.host(this))
@@ -401,6 +404,27 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    // ---------- 后台多久后关闭页面(U1: 本地保存;0=不回收;预设 5/15/30/60 分钟) ----------
+
+    private fun renderWvBgRow() {
+        wvBgRows.removeAllViews()
+        wvBgRows.addView(modeRow(
+            getString(R.string.wvbg_label),
+            listOf(
+                Pair("5", getString(R.string.wvbg_5)),
+                Pair("15", getString(R.string.wvbg_15)),
+                Pair("30", getString(R.string.wvbg_30)),
+                Pair("60", getString(R.string.wvbg_60)),
+                Pair("0", getString(R.string.wvbg_never)),
+            ),
+            Settings.webviewBgTimeoutMinutes(this).toString(),
+            getString(R.string.wvbg_hint)
+        ) { v ->
+            Settings.setWebviewBgTimeoutMinutes(this, v.toInt())
+            renderWvBgRow()
+        })
     }
 
     // ---------- 会话ID黑名单(U3: 本地存储;通知过滤归 U4) ----------

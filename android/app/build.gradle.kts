@@ -21,8 +21,8 @@ android {
         targetSdk = 35
         // App 身份:applicationId(代码包 namespace 为 com.dsh.notify)
         applicationId = "com.dsh.remotenotify"
-        versionCode = 1
-        versionName = "1.0-notify"
+        versionCode = 3
+        versionName = "1.3-notify"
     }
 
     signingConfigs {

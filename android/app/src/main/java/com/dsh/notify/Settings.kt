@@ -140,6 +140,32 @@ object Settings {
         }
     }
 
+    // ---- 后台回收 WebView(U1): App 退后台超过阈值(分钟)销毁内置页面,仅留通知服务 ----
+    // 契约: 文件 dsh_remote_prefs / 键 webview_bg_timeout_minutes / 0=不回收 / 读写夹紧 0..1440
+
+    const val KEY_WEBVIEW_BG_TIMEOUT = "webview_bg_timeout_minutes"
+    const val DEFAULT_WEBVIEW_BG_TIMEOUT_MINUTES = 15
+
+    /** 读路径纯函数: 未设(null)=默认 15;存值夹紧 0..1440(0=不回收)。纯函数,JVM 可测。 */
+    fun webviewBgTimeoutFromStored(stored: Int?): Int =
+        (stored ?: DEFAULT_WEBVIEW_BG_TIMEOUT_MINUTES).coerceIn(0, 1440)
+
+    /** 写路径纯函数: 夹紧 0..1440。纯函数,JVM 可测。 */
+    fun webviewBgTimeoutToStore(minutes: Int): Int = minutes.coerceIn(0, 1440)
+
+    /** 读: 后台多久(分钟)后销毁内置 WebView;0=不回收;未设=默认 15。 */
+    fun webviewBgTimeoutMinutes(c: Context): Int {
+        val p = prefs(c)
+        return if (p.contains(KEY_WEBVIEW_BG_TIMEOUT))
+            webviewBgTimeoutFromStored(p.getInt(KEY_WEBVIEW_BG_TIMEOUT, 0))
+        else
+            webviewBgTimeoutFromStored(null)
+    }
+
+    /** 写: 夹紧 0..1440 后落盘。 */
+    fun setWebviewBgTimeoutMinutes(c: Context, minutes: Int) =
+        prefs(c).edit().putInt(KEY_WEBVIEW_BG_TIMEOUT, webviewBgTimeoutToStore(minutes)).apply()
+
     fun baseUrl(c: Context): String = "http://${host(c)}:${port(c)}/"
 
     fun hasServer(c: Context): Boolean = validateHost(host(c)) && validatePort(port(c))
