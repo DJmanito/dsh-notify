@@ -47,11 +47,10 @@
 
 ## 安装部署
 
-DSH版本≥0.2.0：
-    在DSH侧边栏插件添加插件github:DJmanito/dsh-notify
-DSH版本<0.2.0：
-    安装：dsh plugin --profile web add github:DJmanito/dsh-notify
-    卸载：dsh plugin --profile desktop remove @djmanito/dsh-notify
+- **DSH 版本 ≥ 0.2.0**：在 DSH 侧边栏插件中添加插件 `github:DJmanito/dsh-notify`
+- **DSH 版本 < 0.2.0**：
+  - 安装：`dsh plugin --profile web add github:DJmanito/dsh-notify`
+  - 卸载：`dsh plugin --profile desktop remove @djmanito/dsh-notify`
 
 ## ⚠️ 安全说明（重要）
 
