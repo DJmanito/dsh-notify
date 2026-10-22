@@ -47,32 +47,11 @@
 
 ## 安装部署
 
-### 前置条件
-
-pnpm 在 PATH 中（`dsh plugin` 命令依赖）：`npm install -g pnpm`
-
-### 安装插件
-
-```bash
-# --profile 换成你的 DSH profile 名(桌面端 DSH 常见为 desktop;纯 Web 入口可为 web 等)
-dsh plugin --profile desktop add github:DJmanito/dsh-notify
-# 安装后需重启 DSH(桌面端 = 完全退出后重开)
-```
-
-> 桌面端与浏览器访问**共用同一个 DSH 后端**，插件装一次即两端生效：桌面窗口经启动注入行获得通知，浏览器/手机经同一 web 服务获得相同状态。
-
-### 删除插件
-
-```bash
-dsh plugin --profile desktop remove @djmanito/dsh-notify
-# 删除后需重启 DSH
-```
-
-### 安装 App
-
-GitHub Releases 下载 `DSH.Remote.Notify-v1.0.0.apk` 安装；源码在 `android/` 目录可自行构建。
-
-**手机连接 DSH**：新版 DSH 桌面环境默认监听 `0.0.0.0`，手机与宿主机在同一局域网即可直连（App 连接设置里填宿主机局域网 IP + 端口），无需额外桥接；也可用 `dsh-pocket` 新开一个手机专用固定端口（实测 `3081` 可用）。
+DSH版本≥0.2.0：
+    在DSH侧边栏插件添加插件github:DJmanito/dsh-notify
+DSH版本<0.2.0：
+    安装：dsh plugin --profile web add github:DJmanito/dsh-notify
+    卸载：dsh plugin --profile desktop remove @djmanito/dsh-notify
 
 ## ⚠️ 安全说明（重要）
 
